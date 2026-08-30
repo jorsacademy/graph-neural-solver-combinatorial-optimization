@@ -4,137 +4,104 @@ Research-oriented benchmark for **learning-augmented combinatorial optimization*
 
 ## Research question
 
-Can a graph neural model learn structural information from exact small-instance solutions and use it to guide a fast combinatorial decoder without sacrificing feasibility, and when does that guidance outperform classical heuristics after accounting for optimality gap and latency?
+Can a graph neural model learn structural information from exact small-instance solutions and use it to guide a fast combinatorial decoder without sacrificing feasibility, and when does that guidance outperform classical heuristics after accounting for optimality gap, latency and distribution shift?
 
 ## Current status
 
-**Phase 2 implemented: multi-start beam decoding + validation-selected multi-seed GNN training.**
+**Phase 3 implemented: multi-seed statistical evaluation + deeper OOD size shift + latency decomposition.**
 
-The repository currently includes:
+The repository now includes:
 
-- deterministic Euclidean TSP instance generation;
-- exact Held-Karp dynamic programming for small instances;
-- nearest-neighbor and deterministic 2-opt baselines;
+- deterministic Euclidean TSP generation;
+- exact Held-Karp oracle;
+- nearest-neighbor and 2-opt baselines;
 - exact-tour edge supervision;
-- normalized node and edge features;
-- a lightweight permutation-equivariant PyTorch message-passing GNN;
-- feasibility-preserving greedy decoding;
-- beam search over feasible partial tours;
-- multi-start beam decoding across all start nodes;
-- optional 2-opt refinement after neural decoding;
-- validation-based checkpoint selection using edge BCE;
-- three independent model seeds with validation tour-gap model selection;
-- frozen train/validation/test/OOD-size seed blocks;
-- optimality-gap, latency and feasibility reporting;
+- permutation-equivariant PyTorch message-passing GNN;
+- greedy, beam and multi-start feasible decoding;
+- 2-opt post-refinement;
+- validation checkpoint selection;
+- independent model seeds `0/1/2`;
+- instance-level model-seed aggregation;
+- frozen test and OOD node-count blocks;
+- paired bootstrap 95% confidence intervals;
+- exact sign tests and paired win rates;
+- inference / decoder / local-search / total latency decomposition;
 - unit tests and GitHub Actions CI.
 
-## Initial problem: Euclidean TSP
+## Problem
 
-The first benchmark is the symmetric Euclidean Traveling Salesperson Problem (TSP). For cities `V={1,...,n}` and Euclidean edge costs `c_ij`, find a Hamiltonian cycle minimizing
+The initial benchmark is symmetric Euclidean TSP. The learning model predicts edge utility; a separate combinatorial decoder constructs only Hamiltonian tours. The GNN is therefore guidance, not a replacement for feasibility logic.
 
-```text
-min  sum_(i,j) c_ij x_ij
-```
+## Evaluation protocol
 
-subject to degree and subtour-elimination logic implied by the tour representation.
+Training uses 8-node exact instances. Validation is used only for checkpoint/model selection. Final evaluation uses disjoint blocks:
 
-The repository is deliberately structured so the learning layer is separated from the combinatorial decoder and evaluation protocol. The same architecture can later be extended to CVRP and scheduling-derived graphs.
+- `test`: 8 nodes, seeds `100-103`;
+- `ood_10`: 10 nodes, seeds `200-202`;
+- `ood_12`: 12 nodes, seeds `300-301`.
 
-## Solver stack
+The principal learned method is `gnn_beam_2opt`. Its reference is **nearest-neighbor + 2-opt**.
 
-The benchmark compares:
+Three independently trained GNN seeds are evaluated on every instance. Their results are averaged **within each instance first**; model seeds are not treated as independent test samples. Paired inference is then performed over instance seeds.
 
-- exact Held-Karp dynamic programming on small instances;
-- nearest-neighbor construction;
-- nearest-neighbor + 2-opt local search;
-- GNN edge scoring + greedy decoding;
-- GNN edge scoring + multi-start beam decoding;
-- GNN multi-start beam decoding + 2-opt refinement.
+## Statistical reporting
 
-The GNN does **not** directly emit an unconstrained permutation. It scores edges; combinatorial decoders then construct only valid Hamiltonian tours. This keeps feasibility explicit and separates prediction quality from decoding quality.
+For GNN beam + 2-opt versus nearest-neighbor + 2-opt, Phase 3 reports:
 
-## Validation and model selection
+- mean paired optimality-gap difference;
+- paired 95% bootstrap confidence interval;
+- paired win rate;
+- exact two-sided sign-test p-value;
+- number of paired instances.
 
-Training, validation, test and OOD blocks are disjoint.
+A negative paired gap difference favors the GNN method. Statistical significance alone is not considered sufficient for promotion; latency and feasibility remain part of the decision.
 
-- training seeds: `0-19`;
-- validation seeds: `50-54`;
-- in-distribution test seeds: `100-103`;
-- OOD-size seeds: `200-203` with larger node count.
+## Latency decomposition
 
-During training, the checkpoint with the lowest validation edge BCE is retained. Independent model seeds `0`, `1` and `2` are then compared by **validation mean tour optimality gap** under the beam decoder. Test and OOD instances are never used for checkpoint, seed or decoder selection.
+The neural pipeline records separately:
 
-## Beam and multi-start decoding
+1. GNN edge-score inference;
+2. multi-start beam decoding;
+3. 2-opt refinement;
+4. total end-to-end decision latency.
 
-Beam search maintains the highest-scoring feasible partial tours under learned edge probabilities. No repeated node is allowed. The decoder closes the Hamiltonian cycle only after all nodes have been visited.
-
-Multi-start decoding runs the same beam search from several start nodes and keeps the lowest-cost feasible completed tour. Because the objective coefficients are known at decision time, using tour cost to choose among completed feasible candidate tours does not use optimal labels or test-set supervision.
-
-## Exact supervision
-
-For each training seed, Held-Karp returns a globally optimal tour. The tour is converted into a symmetric binary edge-adjacency target. The GNN is trained as an edge scorer rather than as a black-box permutation generator.
+This prevents local-search time from being hidden inside a generic neural inference number.
 
 ## Reproduce
-
-Base OR stack:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
-ruff check src tests
-pytest -q tests/test_core.py
-```
-
-Neural Phase 1 benchmark:
-
-```bash
 pip install -e '.[dev,neural]'
-pytest -q tests/test_core.py tests/test_neural.py
+ruff check src tests
+pytest -q
 python -m gnn_solver.evaluate
-```
-
-Phase 2 benchmark:
-
-```bash
-pytest -q tests/test_phase2.py
 python -m gnn_solver.phase2_experiment
+python -m gnn_solver.phase3_experiment
 ```
-
-## Research contract
-
-A learned method is not considered better merely because it uses a GNN. Evaluation must report:
-
-- tour cost;
-- optimality gap where an exact oracle is tractable;
-- feasibility rate;
-- inference/solve latency;
-- multiple independent model seeds;
-- in-distribution and size-shift evaluation;
-- comparison against nearest-neighbor and 2-opt;
-- negative/null results.
-
-The key reference is **nearest-neighbor + 2-opt**, not nearest neighbor alone. If beam search or GNN guidance does not improve quality enough to justify its added latency and complexity, that result is retained.
 
 ## Repository layout
 
 ```text
 src/gnn_solver/
-  instance.py              # seeded Euclidean TSP instances
-  exact.py                 # Held-Karp exact oracle
-  heuristics.py            # nearest neighbor and 2-opt
-  features.py              # node/edge tensors
-  dataset.py               # exact-solution supervision
-  model.py                 # lightweight message-passing GNN
-  decoder.py               # greedy feasible neural decoder
-  beam_decoder.py          # beam + multi-start decoding
-  train.py                 # reproducible training + validation checkpoints
-  evaluate.py              # Phase 1 gap/latency runner
-  phase2_experiment.py     # multi-seed selection + test/OOD benchmark
+  instance.py
+  exact.py
+  heuristics.py
+  features.py
+  dataset.py
+  model.py
+  decoder.py
+  beam_decoder.py
+  train.py
+  statistics.py
+  evaluate.py
+  phase2_experiment.py
+  phase3_experiment.py
 tests/
   test_core.py
   test_neural.py
   test_phase2.py
+  test_phase3.py
 configs/
   experiment.json
 docs/
@@ -143,17 +110,25 @@ docs/
   ci.yml
 ```
 
-## Next research stages
+## Research contract
 
-### Phase 3 — statistical and deeper OOD evaluation
-Add larger size shifts, paired bootstrap confidence intervals, model-seed aggregation, and end-to-end latency decomposition.
+- feasibility must remain 100%;
+- exact optimality gaps are used where tractable;
+- test/OOD blocks are never used for model selection;
+- model-seed replication is not confused with test-sample replication;
+- nearest-neighbor + 2-opt is the main classical reference;
+- quality gains must be interpreted together with latency;
+- negative or null GNN results are retained.
+
+## Next research stage
 
 ### Phase 4 — CVRP extension
-Reuse the graph-learning stack on capacitated vehicle routing with explicit vehicle-capacity state and feasibility-preserving decoding.
+
+Reuse the graph-learning stack on capacitated vehicle routing with explicit demand and remaining-vehicle-capacity state, exact/small-instance reference solutions, strong OR heuristics and a feasibility-preserving neural decoder.
 
 ## Scope boundary
 
-The TSP benchmark is intended to establish a controlled neural-combinatorial solver methodology. Large-scale VRP, learned branching, neural cut selection and scheduling graphs are separate extensions rather than claims of the current implementation.
+The TSP benchmark is now complete enough to serve as the controlled methodology layer. Large-scale VRP, learned branching, neural cut selection and scheduling graphs should be separate extensions rather than silent additions to the TSP benchmark.
 
 ## License
 
