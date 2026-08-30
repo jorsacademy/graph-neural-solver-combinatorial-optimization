@@ -1,35 +1,47 @@
 {
   "problem": "euclidean_tsp",
+  "phase": 2,
   "train": {
     "n_nodes": 8,
     "seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
   },
   "validation": {
     "n_nodes": 8,
-    "seeds": [50, 51, 52, 53, 54]
+    "seeds": [50, 51, 52, 53, 54],
+    "used_for": ["checkpoint_selection", "model_seed_selection"]
   },
   "test": {
     "n_nodes": 8,
-    "seeds": [100, 101, 102, 103]
+    "seeds": [100, 101, 102, 103],
+    "used_for": "final_in_distribution_evaluation_only"
   },
   "ood_size": {
     "n_nodes": 10,
-    "seeds": [200, 201, 202, 203]
+    "seeds": [200, 201, 202, 203],
+    "used_for": "size_shift_evaluation_only"
   },
   "model": {
     "hidden_dim": 32,
     "layers": 2,
     "epochs": 20,
     "learning_rate": 0.001,
-    "seed": 0
+    "model_seeds": [0, 1, 2]
+  },
+  "decoder": {
+    "beam_width": 8,
+    "multi_start": true,
+    "refinement": "2opt"
   },
   "baselines": [
     "held_karp",
     "nearest_neighbor",
     "nearest_neighbor_2opt",
     "gnn_greedy",
-    "gnn_2opt"
+    "gnn_2opt",
+    "gnn_multistart_beam",
+    "gnn_multistart_beam_2opt"
   ],
   "primary_metric": "optimality_gap_pct",
-  "secondary_metrics": ["tour_cost", "latency_ms", "feasibility_rate"]
+  "secondary_metrics": ["tour_cost", "latency_ms", "feasibility_rate"],
+  "selection_rule": "Select checkpoint by validation edge BCE and model seed by validation mean tour gap. Test and OOD splits are never used for selection."
 }
