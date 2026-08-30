@@ -25,5 +25,6 @@ jobs:
           python-version: '3.11'
       - run: pip install -e '.[dev,neural]'
       - run: ruff check src tests
-      - run: pytest -q tests/test_core.py tests/test_neural.py
+      - run: pytest -q tests/test_core.py tests/test_neural.py tests/test_phase2.py
       - run: python -m gnn_solver.evaluate
+      - run: python -m gnn_solver.phase2_experiment
