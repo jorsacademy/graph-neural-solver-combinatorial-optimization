@@ -1,6 +1,6 @@
 {
   "problem": "euclidean_tsp",
-  "phase": 2,
+  "phase": 3,
   "train": {
     "n_nodes": 8,
     "seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
@@ -10,38 +10,30 @@
     "seeds": [50, 51, 52, 53, 54],
     "used_for": ["checkpoint_selection", "model_seed_selection"]
   },
-  "test": {
-    "n_nodes": 8,
-    "seeds": [100, 101, 102, 103],
-    "used_for": "final_in_distribution_evaluation_only"
-  },
-  "ood_size": {
-    "n_nodes": 10,
-    "seeds": [200, 201, 202, 203],
-    "used_for": "size_shift_evaluation_only"
-  },
+  "evaluation_blocks": [
+    {"name": "test", "n_nodes": 8, "seeds": [100, 101, 102, 103]},
+    {"name": "ood_10", "n_nodes": 10, "seeds": [200, 201, 202]},
+    {"name": "ood_12", "n_nodes": 12, "seeds": [300, 301]}
+  ],
   "model": {
     "hidden_dim": 32,
     "layers": 2,
-    "epochs": 20,
     "learning_rate": 0.001,
     "model_seeds": [0, 1, 2]
   },
   "decoder": {
-    "beam_width": 8,
+    "beam_width": 6,
     "multi_start": true,
     "refinement": "2opt"
   },
-  "baselines": [
-    "held_karp",
-    "nearest_neighbor",
-    "nearest_neighbor_2opt",
-    "gnn_greedy",
-    "gnn_2opt",
-    "gnn_multistart_beam",
-    "gnn_multistart_beam_2opt"
-  ],
+  "statistics": {
+    "reference": "nearest_neighbor_2opt",
+    "paired_bootstrap_samples": 1000,
+    "confidence": 0.95,
+    "sign_test": true,
+    "model_seed_aggregation": "mean_by_instance_before_inference"
+  },
+  "latency_components": ["gnn_inference_ms", "beam_decode_ms", "two_opt_refine_ms", "total_ms"],
   "primary_metric": "optimality_gap_pct",
-  "secondary_metrics": ["tour_cost", "latency_ms", "feasibility_rate"],
-  "selection_rule": "Select checkpoint by validation edge BCE and model seed by validation mean tour gap. Test and OOD splits are never used for selection."
+  "secondary_metrics": ["latency_ms", "feasibility_rate", "paired_difference", "win_rate"]
 }
